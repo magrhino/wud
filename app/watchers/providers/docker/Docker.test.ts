@@ -600,6 +600,25 @@ describe('Docker Watcher', () => {
             expect(recoveredReport.container.error).toBeUndefined();
             expect(recoveredReport.changed).toBe(true);
         });
+
+        test('should not persist a targeted container processing error', async () => {
+            const container = { id: 'test123', name: 'test' };
+            const mockLogChild = { warn: jest.fn(), debug: jest.fn() };
+            docker.log = {
+                child: jest.fn().mockReturnValue(mockLogChild),
+            };
+            docker.findNewVersion = jest
+                .fn()
+                .mockRejectedValue(new Error('Registry error'));
+
+            const result = await docker.watchContainer(container, false);
+
+            expect(result.container.error).toEqual({
+                message: 'Registry error',
+            });
+            expect(storeContainer.insertContainer).not.toHaveBeenCalled();
+            expect(storeContainer.updateContainer).not.toHaveBeenCalled();
+        });
     });
 
     describe('Container Retrieval', () => {
@@ -679,6 +698,25 @@ describe('Docker Watcher', () => {
 
             await docker.register('watcher', 'docker', 'test', {});
             await docker.getContainers(false);
+
+            expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
+        });
+
+        test('should not prune containers after incomplete full discovery', async () => {
+            storeContainer.getContainers.mockReturnValue([{ id: 'old1' }]);
+            mockDockerApi.listContainers.mockResolvedValue([
+                {
+                    Id: 'current',
+                    Labels: { 'wud.watch': 'true' },
+                    Names: ['/current'],
+                },
+            ]);
+            docker.addImageDetailsToContainer = jest
+                .fn()
+                .mockRejectedValue(new Error('Inspect failed'));
+
+            await docker.register('watcher', 'docker', 'test', {});
+            await docker.getContainers();
 
             expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
         });

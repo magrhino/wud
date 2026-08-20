@@ -168,7 +168,10 @@ describe('Container Router', () => {
         await routeHandler({ params: { id: 'stale-id' } }, mockRes);
 
         expect(watcher.getContainers).toHaveBeenCalledWith(false);
-        expect(watcher.watchContainer).toHaveBeenCalledWith(currentContainer);
+        expect(watcher.watchContainer).toHaveBeenCalledWith(
+            currentContainer,
+            false,
+        );
         expect(storeContainer.deleteContainer).toHaveBeenCalledTimes(1);
         expect(storeContainer.deleteContainer).toHaveBeenCalledWith('stale-id');
         expect(mockRes.status).toHaveBeenCalledWith(200);

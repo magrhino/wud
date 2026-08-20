@@ -540,7 +540,7 @@ export class Docker extends Watcher {
     /**
      * Watch a Container.
      */
-    async watchContainer(container: Container) {
+    async watchContainer(container: Container, persistErrors = true) {
         // Child logger for the container to process
         const logContainer = this.log.child({ container: fullName(container) });
         const containerWithResult = container;
@@ -563,7 +563,9 @@ export class Docker extends Watcher {
         }
 
         const containerReport =
-            this.mapContainerToContainerReport(containerWithResult);
+            containerWithResult.error && !persistErrors
+                ? { container: containerWithResult, changed: false }
+                : this.mapContainerToContainerReport(containerWithResult);
         event.emitContainerReport(containerReport);
         return containerReport;
     }
@@ -605,16 +607,17 @@ export class Docker extends Watcher {
                 return e;
             }),
         );
-        const containersWithImage = (
-            await Promise.all(containerPromises)
-        ).filter((result) => !(result instanceof Error));
+        const containersWithImage = await Promise.all(containerPromises);
 
         // Return containers to process
         const containersToReturn = containersWithImage.filter(
-            (imagePromise) => imagePromise !== undefined,
+            (imagePromise) =>
+                imagePromise !== undefined && !(imagePromise instanceof Error),
         );
+        const discoverySucceeded =
+            containersWithImage.length === containersToReturn.length;
 
-        if (prune) {
+        if (prune && discoverySucceeded) {
             try {
                 const containersFromTheStore = storeContainer.getContainers({
                     watcher: this.name,
@@ -625,6 +628,10 @@ export class Docker extends Watcher {
                     `Error when trying to prune the old containers (${e.message})`,
                 );
             }
+        } else if (prune) {
+            this.log.warn(
+                'Skip pruning because container discovery is incomplete',
+            );
         }
         this.updatePrometheusGauge(containersToReturn);
 

@@ -236,8 +236,10 @@ async function watchContainer(req, res) {
                     res.status(404).send();
                 } else {
                     // Run watchContainer from the Provider
-                    const containerReport =
-                        await watcher.watchContainer(containerFound);
+                    const containerReport = await watcher.watchContainer(
+                        containerFound,
+                        false,
+                    );
                     if (
                         containerFound.id !== container.id &&
                         containerReport.container.error === undefined
