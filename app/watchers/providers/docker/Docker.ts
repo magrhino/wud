@@ -318,10 +318,6 @@ export class Docker extends Watcher {
             { maxRandomDelay: this.configuration.jitter },
         );
 
-        // Force watchatstart value based on the state store (empty or not)
-        this.configuration.watchatstart =
-            storeContainer.getContainers().length === 0;
-
         // watch at startup if enabled (after all components have been registered)
         if (this.configuration.watchatstart) {
             this.watchCronTimeout = setTimeout(
@@ -575,7 +571,7 @@ export class Docker extends Watcher {
     /**
      * Get all containers to watch.
      */
-    async getContainers(): Promise<Container[]> {
+    async getContainers(prune = true): Promise<Container[]> {
         const listContainersOptions: Dockerode.ContainerListOptions = {};
         if (this.configuration.watchall) {
             listContainersOptions.all = true;
@@ -618,16 +614,17 @@ export class Docker extends Watcher {
             (imagePromise) => imagePromise !== undefined,
         );
 
-        // Prune old containers from the store
-        try {
-            const containersFromTheStore = storeContainer.getContainers({
-                watcher: this.name,
-            });
-            pruneOldContainers(containersToReturn, containersFromTheStore);
-        } catch (e: any) {
-            this.log.warn(
-                `Error when trying to prune the old containers (${e.message})`,
-            );
+        if (prune) {
+            try {
+                const containersFromTheStore = storeContainer.getContainers({
+                    watcher: this.name,
+                });
+                pruneOldContainers(containersToReturn, containersFromTheStore);
+            } catch (e: any) {
+                this.log.warn(
+                    `Error when trying to prune the old containers (${e.message})`,
+                );
+            }
         }
         this.updatePrometheusGauge(containersToReturn);
 

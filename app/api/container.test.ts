@@ -127,4 +127,122 @@ describe('Container Router', () => {
             },
         ]);
     });
+
+    test('watchContainer should replace a stale id without deleting unrelated containers', async () => {
+        const staleContainer = {
+            id: 'stale-id',
+            name: 'app',
+            watcher: 'local',
+        };
+        const currentContainer = {
+            id: 'current-id',
+            name: 'app',
+            watcher: 'local',
+        };
+        const unrelatedContainer = {
+            id: 'unrelated-id',
+            name: 'other',
+            watcher: 'local',
+        };
+        const watcher = {
+            getContainers: jest
+                .fn()
+                .mockResolvedValue([currentContainer, unrelatedContainer]),
+            watchContainer: jest.fn().mockResolvedValue({
+                container: currentContainer,
+            }),
+        };
+        storeContainer.getContainer.mockReturnValue(staleContainer);
+        registry.getState.mockReturnValue({
+            watcher: { 'docker.local': watcher },
+        });
+        const router = containerRouter.init();
+        const routeHandler = router.post.mock.calls.find(
+            ([route]) => route === '/:id/watch',
+        )[1];
+        const mockRes = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn(),
+        };
+
+        await routeHandler({ params: { id: 'stale-id' } }, mockRes);
+
+        expect(watcher.getContainers).toHaveBeenCalledWith(false);
+        expect(watcher.watchContainer).toHaveBeenCalledWith(currentContainer);
+        expect(storeContainer.deleteContainer).toHaveBeenCalledTimes(1);
+        expect(storeContainer.deleteContainer).toHaveBeenCalledWith('stale-id');
+        expect(mockRes.status).toHaveBeenCalledWith(200);
+        expect(mockRes.json).toHaveBeenCalledWith(currentContainer);
+    });
+
+    test('watchContainer should preserve the store when discovery fails', async () => {
+        const watcher = {
+            getContainers: jest
+                .fn()
+                .mockRejectedValue(new Error('Docker unavailable')),
+            watchContainer: jest.fn(),
+        };
+        storeContainer.getContainer.mockReturnValue({
+            id: 'stale-id',
+            name: 'app',
+            watcher: 'local',
+        });
+        registry.getState.mockReturnValue({
+            watcher: { 'docker.local': watcher },
+        });
+        const router = containerRouter.init();
+        const routeHandler = router.post.mock.calls.find(
+            ([route]) => route === '/:id/watch',
+        )[1];
+        const mockRes = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn(),
+        };
+
+        await routeHandler({ params: { id: 'stale-id' } }, mockRes);
+
+        expect(watcher.watchContainer).not.toHaveBeenCalled();
+        expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
+        expect(mockRes.status).toHaveBeenCalledWith(500);
+    });
+
+    test('watchContainer should preserve the stale container when its replacement reports an error', async () => {
+        const currentContainer = {
+            id: 'current-id',
+            name: 'app',
+            watcher: 'local',
+        };
+        const failedContainer = {
+            ...currentContainer,
+            error: { message: 'Registry unavailable' },
+        };
+        const watcher = {
+            getContainers: jest.fn().mockResolvedValue([currentContainer]),
+            watchContainer: jest.fn().mockResolvedValue({
+                container: failedContainer,
+            }),
+        };
+        storeContainer.getContainer.mockReturnValue({
+            id: 'stale-id',
+            name: 'app',
+            watcher: 'local',
+        });
+        registry.getState.mockReturnValue({
+            watcher: { 'docker.local': watcher },
+        });
+        const router = containerRouter.init();
+        const routeHandler = router.post.mock.calls.find(
+            ([route]) => route === '/:id/watch',
+        )[1];
+        const mockRes = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn(),
+        };
+
+        await routeHandler({ params: { id: 'stale-id' } }, mockRes);
+
+        expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
+        expect(mockRes.status).toHaveBeenCalledWith(200);
+        expect(mockRes.json).toHaveBeenCalledWith(failedContainer);
+    });
 });

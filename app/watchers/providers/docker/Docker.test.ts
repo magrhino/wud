@@ -215,13 +215,13 @@ describe('Docker Watcher', () => {
             expect(mockDebounce).not.toHaveBeenCalled();
         });
 
-        test('should set watchatstart based on store state', async () => {
+        test('should honor watchatstart when the store is not empty', async () => {
             storeContainer.getContainers.mockReturnValue([{ id: 'existing' }]);
             await docker.register('watcher', 'docker', 'test', {
                 watchatstart: true,
             });
-            docker.init();
-            expect(docker.configuration.watchatstart).toBe(false);
+            expect(docker.configuration.watchatstart).toBe(true);
+            expect(docker.watchCronTimeout).toBeDefined();
         });
     });
 
@@ -661,7 +661,7 @@ describe('Docker Watcher', () => {
             expect(result).toHaveLength(1);
         });
 
-        test('should prune old containers', async () => {
+        test('should prune old containers after full discovery', async () => {
             const oldContainers = [{ id: 'old1' }, { id: 'old2' }];
             storeContainer.getContainers.mockReturnValue(oldContainers);
             mockDockerApi.listContainers.mockResolvedValue([]);
@@ -671,6 +671,16 @@ describe('Docker Watcher', () => {
 
             expect(storeContainer.deleteContainer).toHaveBeenCalledWith('old1');
             expect(storeContainer.deleteContainer).toHaveBeenCalledWith('old2');
+        });
+
+        test('should not prune containers during targeted discovery', async () => {
+            storeContainer.getContainers.mockReturnValue([{ id: 'old1' }]);
+            mockDockerApi.listContainers.mockResolvedValue([]);
+
+            await docker.register('watcher', 'docker', 'test', {});
+            await docker.getContainers(false);
+
+            expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
         });
 
         test('should handle pruning error', async () => {

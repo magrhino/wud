@@ -218,17 +218,32 @@ async function watchContainer(req, res) {
             try {
                 // Ensure container is still in store
                 // (for cases where it has been removed before running an new watchAll)
-                const containers = await watcher.getContainers();
-                const containerFound = containers.find(
+                const containers = await watcher.getContainers(false);
+                let containerFound = containers.find(
                     (containerInList) => containerInList.id === container.id,
                 );
+                if (!containerFound) {
+                    const containersByName = containers.filter(
+                        (containerInList) =>
+                            containerInList.name === container.name,
+                    );
+                    if (containersByName.length === 1) {
+                        [containerFound] = containersByName;
+                    }
+                }
 
                 if (!containerFound) {
                     res.status(404).send();
                 } else {
                     // Run watchContainer from the Provider
                     const containerReport =
-                        await watcher.watchContainer(container);
+                        await watcher.watchContainer(containerFound);
+                    if (
+                        containerFound.id !== container.id &&
+                        containerReport.container.error === undefined
+                    ) {
+                        storeContainer.deleteContainer(container.id);
+                    }
                     res.status(200).json(containerReport.container);
                 }
             } catch (e) {
