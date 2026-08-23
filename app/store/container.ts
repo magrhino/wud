@@ -44,21 +44,26 @@ export function insertContainer(container) {
  * Update existing container.
  * @param container
  */
-export function updateContainer(container) {
+export function updateContainer(container, previousId = container.id) {
     const containerToReturn = validateContainer(container);
+    const containersToRemove = containers.find({
+        'data.id': container.id,
+    });
+    if (previousId !== container.id) {
+        containersToRemove.push(
+            ...containers.find({
+                'data.id': previousId,
+            }),
+        );
+    }
 
-    // Remove existing container
-    containers
-        .chain()
-        .find({
-            'data.id': container.id,
-        })
-        .remove();
-
-    // Insert new one
+    // Insert first so a persistence failure leaves existing records untouched
     containers.insert({
         data: containerToReturn,
     });
+    if (containersToRemove.length > 0) {
+        containers.remove(containersToRemove);
+    }
     emitContainerUpdated(containerToReturn);
     return containerToReturn;
 }

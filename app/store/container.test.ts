@@ -80,13 +80,16 @@ test('insertContainer should insert doc and emit an event', async () => {
 });
 
 test('updateContainer should update doc and emit an event', async () => {
+    const currentContainer = { $loki: 1 };
+    const previousContainer = { $loki: 2 };
+    const find = jest
+        .fn(() => [])
+        .mockReturnValueOnce([currentContainer])
+        .mockReturnValueOnce([previousContainer]);
     const collection = {
         insert: () => {},
-        chain: () => ({
-            find: () => ({
-                remove: () => ({}),
-            }),
-        }),
+        find,
+        remove: jest.fn(),
     };
     const db = {
         getCollection: () => collection,
@@ -122,9 +125,31 @@ test('updateContainer should update doc and emit an event', async () => {
     const spyInsert = jest.spyOn(collection, 'insert');
     const spyEvent = jest.spyOn(event, 'emitContainerUpdated');
     container.createCollections(db);
-    container.updateContainer(containerToSave);
+    container.updateContainer(containerToSave, 'previous-id');
     expect(spyInsert).toHaveBeenCalled();
     expect(spyEvent).toHaveBeenCalled();
+    expect(find).toHaveBeenCalledWith({
+        'data.id': containerToSave.id,
+    });
+    expect(find).toHaveBeenCalledWith({
+        'data.id': 'previous-id',
+    });
+    expect(collection.remove).toHaveBeenCalledWith([
+        currentContainer,
+        previousContainer,
+    ]);
+    expect(event.emitContainerRemoved).not.toHaveBeenCalled();
+
+    collection.remove.mockClear();
+    spyEvent.mockClear();
+    spyInsert.mockImplementationOnce(() => {
+        throw new Error('Insert failed');
+    });
+    expect(() =>
+        container.updateContainer(containerToSave, 'previous-id'),
+    ).toThrow('Insert failed');
+    expect(collection.remove).not.toHaveBeenCalled();
+    expect(event.emitContainerUpdated).not.toHaveBeenCalled();
 });
 
 test('getContainers should return all containers sorted by name', async () => {

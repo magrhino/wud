@@ -611,7 +611,11 @@ describe('Docker Watcher', () => {
                 .fn()
                 .mockRejectedValue(new Error('Registry error'));
 
-            const result = await docker.watchContainer(container, false);
+            const result = await docker.watchContainer(
+                container,
+                false,
+                'stale-id',
+            );
 
             expect(result.container.error).toEqual({
                 message: 'Registry error',
@@ -702,8 +706,11 @@ describe('Docker Watcher', () => {
             expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
         });
 
-        test('should not prune containers after incomplete full discovery', async () => {
-            storeContainer.getContainers.mockReturnValue([{ id: 'old1' }]);
+        test('should prune only containers absent from incomplete discovery', async () => {
+            storeContainer.getContainers.mockReturnValue([
+                { id: 'current' },
+                { id: 'old1' },
+            ]);
             mockDockerApi.listContainers.mockResolvedValue([
                 {
                     Id: 'current',
@@ -718,7 +725,8 @@ describe('Docker Watcher', () => {
             await docker.register('watcher', 'docker', 'test', {});
             await docker.getContainers();
 
-            expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
+            expect(storeContainer.deleteContainer).toHaveBeenCalledTimes(1);
+            expect(storeContainer.deleteContainer).toHaveBeenCalledWith('old1');
         });
 
         test('should handle pruning error', async () => {
@@ -1279,6 +1287,28 @@ describe('Docker Watcher', () => {
             expect(storeContainer.insertContainer).toHaveBeenCalledWith(
                 container,
             );
+        });
+
+        test('should replace a stale container as one update', async () => {
+            const container = { id: 'current', name: 'test' };
+            docker.log = {
+                child: jest.fn().mockReturnValue({ debug: jest.fn() }),
+            };
+            storeContainer.getContainer.mockReturnValue(undefined);
+            storeContainer.updateContainer.mockReturnValue(container);
+
+            const result = docker.mapContainerToContainerReport(
+                container,
+                'stale',
+            );
+
+            expect(result.changed).toBe(true);
+            expect(storeContainer.updateContainer).toHaveBeenCalledWith(
+                container,
+                'stale',
+            );
+            expect(storeContainer.insertContainer).not.toHaveBeenCalled();
+            expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
         });
 
         test('should map container to report for existing container', async () => {

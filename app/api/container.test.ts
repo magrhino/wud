@@ -171,9 +171,9 @@ describe('Container Router', () => {
         expect(watcher.watchContainer).toHaveBeenCalledWith(
             currentContainer,
             false,
+            'stale-id',
         );
-        expect(storeContainer.deleteContainer).toHaveBeenCalledTimes(1);
-        expect(storeContainer.deleteContainer).toHaveBeenCalledWith('stale-id');
+        expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
         expect(mockRes.status).toHaveBeenCalledWith(200);
         expect(mockRes.json).toHaveBeenCalledWith(currentContainer);
     });
@@ -244,6 +244,11 @@ describe('Container Router', () => {
 
         await routeHandler({ params: { id: 'stale-id' } }, mockRes);
 
+        expect(watcher.watchContainer).toHaveBeenCalledWith(
+            currentContainer,
+            false,
+            'stale-id',
+        );
         expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
         expect(mockRes.status).toHaveBeenCalledWith(200);
         expect(mockRes.json).toHaveBeenCalledWith(failedContainer);

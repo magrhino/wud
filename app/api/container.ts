@@ -239,13 +239,10 @@ async function watchContainer(req, res) {
                     const containerReport = await watcher.watchContainer(
                         containerFound,
                         false,
+                        containerFound.id !== container.id
+                            ? container.id
+                            : undefined,
                     );
-                    if (
-                        containerFound.id !== container.id &&
-                        containerReport.container.error === undefined
-                    ) {
-                        storeContainer.deleteContainer(container.id);
-                    }
                     res.status(200).json(containerReport.container);
                 }
             } catch (e) {

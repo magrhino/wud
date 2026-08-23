@@ -200,29 +200,26 @@ function getRegistry(registryName: string) {
  * Get old containers to prune.
  */
 function getOldContainers(
-    newContainers: Container[],
+    newContainerIds: Set<string>,
     containersFromTheStore: Container[],
 ) {
-    if (!containersFromTheStore || !newContainers) {
+    if (!containersFromTheStore || !newContainerIds) {
         return [];
     }
-    return containersFromTheStore.filter((containerFromStore) => {
-        const isContainerStillToWatch = newContainers.find(
-            (newContainer) => newContainer.id === containerFromStore.id,
-        );
-        return isContainerStillToWatch === undefined;
-    });
+    return containersFromTheStore.filter(
+        (containerFromStore) => !newContainerIds.has(containerFromStore.id),
+    );
 }
 
 /**
  * Prune old containers from the store.
  */
 function pruneOldContainers(
-    newContainers: Container[],
+    newContainerIds: Set<string>,
     containersFromTheStore: Container[],
 ) {
     const containersToRemove = getOldContainers(
-        newContainers,
+        newContainerIds,
         containersFromTheStore,
     );
     containersToRemove.forEach((containerToRemove) => {
@@ -540,7 +537,11 @@ export class Docker extends Watcher {
     /**
      * Watch a Container.
      */
-    async watchContainer(container: Container, persistErrors = true) {
+    async watchContainer(
+        container: Container,
+        persistErrors = true,
+        previousContainerId?: string,
+    ) {
         // Child logger for the container to process
         const logContainer = this.log.child({ container: fullName(container) });
         const containerWithResult = container;
@@ -565,7 +566,10 @@ export class Docker extends Watcher {
         const containerReport =
             containerWithResult.error && !persistErrors
                 ? { container: containerWithResult, changed: false }
-                : this.mapContainerToContainerReport(containerWithResult);
+                : this.mapContainerToContainerReport(
+                      containerWithResult,
+                      previousContainerId,
+                  );
         event.emitContainerReport(containerReport);
         return containerReport;
     }
@@ -614,24 +618,22 @@ export class Docker extends Watcher {
             (imagePromise) =>
                 imagePromise !== undefined && !(imagePromise instanceof Error),
         );
-        const discoverySucceeded =
-            containersWithImage.length === containersToReturn.length;
-
-        if (prune && discoverySucceeded) {
+        if (prune) {
             try {
                 const containersFromTheStore = storeContainer.getContainers({
                     watcher: this.name,
                 });
-                pruneOldContainers(containersToReturn, containersFromTheStore);
+                pruneOldContainers(
+                    new Set(
+                        filteredContainers.map((container) => container.Id),
+                    ),
+                    containersFromTheStore,
+                );
             } catch (e: any) {
                 this.log.warn(
                     `Error when trying to prune the old containers (${e.message})`,
                 );
             }
-        } else if (prune) {
-            this.log.warn(
-                'Skip pruning because container discovery is incomplete',
-            );
         }
         this.updatePrometheusGauge(containersToReturn);
 
@@ -868,7 +870,10 @@ export class Docker extends Watcher {
     /**
      * Process a Container with result and map to a containerReport.
      */
-    mapContainerToContainerReport(containerWithResult: Container) {
+    mapContainerToContainerReport(
+        containerWithResult: Container,
+        previousContainerId?: string,
+    ) {
         const logContainer = this.log.child({
             container: fullName(containerWithResult),
         });
@@ -882,8 +887,20 @@ export class Docker extends Watcher {
             containerWithResult.id,
         );
 
-        // Not found in DB? => Save it
-        if (!containerInDb) {
+        // Recreated container? => Replace the stale id as a single update
+        if (previousContainerId) {
+            logContainer.debug('Container id changed');
+            containerReport.container = storeContainer.updateContainer(
+                containerWithResult,
+                previousContainerId,
+            );
+            containerReport.changed =
+                !containerInDb ||
+                (containerInDb.resultChanged(containerReport.container) &&
+                    containerWithResult.updateAvailable);
+
+            // Not found in DB? => Save it
+        } else if (!containerInDb) {
             logContainer.debug('Container watched for the first time');
             containerReport.container =
                 storeContainer.insertContainer(containerWithResult);
