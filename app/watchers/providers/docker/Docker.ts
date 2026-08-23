@@ -890,13 +890,16 @@ export class Docker extends Watcher {
         // Recreated container? => Replace the stale id as a single update
         if (previousContainerId) {
             logContainer.debug('Container id changed');
+            const containerToCompare =
+                containerInDb ??
+                storeContainer.getContainer(previousContainerId);
             containerReport.container = storeContainer.updateContainer(
                 containerWithResult,
                 previousContainerId,
             );
             containerReport.changed =
-                !containerInDb ||
-                (containerInDb.resultChanged(containerReport.container) &&
+                !containerToCompare ||
+                (containerToCompare.resultChanged(containerReport.container) &&
                     containerWithResult.updateAvailable);
 
             // Not found in DB? => Save it

@@ -1290,11 +1290,20 @@ describe('Docker Watcher', () => {
         });
 
         test('should replace a stale container as one update', async () => {
-            const container = { id: 'current', name: 'test' };
+            const container = {
+                id: 'current',
+                name: 'test',
+                updateAvailable: true,
+            };
+            const staleContainer = {
+                resultChanged: jest.fn().mockReturnValue(false),
+            };
             docker.log = {
                 child: jest.fn().mockReturnValue({ debug: jest.fn() }),
             };
-            storeContainer.getContainer.mockReturnValue(undefined);
+            storeContainer.getContainer
+                .mockReturnValueOnce(undefined)
+                .mockReturnValueOnce(staleContainer);
             storeContainer.updateContainer.mockReturnValue(container);
 
             const result = docker.mapContainerToContainerReport(
@@ -1302,7 +1311,10 @@ describe('Docker Watcher', () => {
                 'stale',
             );
 
-            expect(result.changed).toBe(true);
+            expect(result.changed).toBe(false);
+            expect(staleContainer.resultChanged).toHaveBeenCalledWith(
+                container,
+            );
             expect(storeContainer.updateContainer).toHaveBeenCalledWith(
                 container,
                 'stale',
