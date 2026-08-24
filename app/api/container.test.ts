@@ -41,6 +41,19 @@ function createTrigger(type, name, configuration) {
     };
 }
 
+async function watchContainer(id) {
+    const router = containerRouter.init();
+    const routeHandler = router.post.mock.calls.find(
+        ([route]) => route === '/:id/watch',
+    )[1];
+    const response = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+    };
+    await routeHandler({ params: { id } }, response);
+    return response;
+}
+
 describe('Container Router', () => {
     beforeEach(async () => {
         jest.clearAllMocks();
@@ -156,16 +169,7 @@ describe('Container Router', () => {
         registry.getState.mockReturnValue({
             watcher: { 'docker.local': watcher },
         });
-        const router = containerRouter.init();
-        const routeHandler = router.post.mock.calls.find(
-            ([route]) => route === '/:id/watch',
-        )[1];
-        const mockRes = {
-            status: jest.fn().mockReturnThis(),
-            json: jest.fn(),
-        };
-
-        await routeHandler({ params: { id: 'stale-id' } }, mockRes);
+        const mockRes = await watchContainer('stale-id');
 
         expect(watcher.getContainers).toHaveBeenCalledWith(false);
         expect(watcher.watchContainer).toHaveBeenCalledWith(
@@ -193,16 +197,7 @@ describe('Container Router', () => {
         registry.getState.mockReturnValue({
             watcher: { 'docker.local': watcher },
         });
-        const router = containerRouter.init();
-        const routeHandler = router.post.mock.calls.find(
-            ([route]) => route === '/:id/watch',
-        )[1];
-        const mockRes = {
-            status: jest.fn().mockReturnThis(),
-            json: jest.fn(),
-        };
-
-        await routeHandler({ params: { id: 'stale-id' } }, mockRes);
+        const mockRes = await watchContainer('stale-id');
 
         expect(watcher.watchContainer).not.toHaveBeenCalled();
         expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
@@ -233,16 +228,7 @@ describe('Container Router', () => {
         registry.getState.mockReturnValue({
             watcher: { 'docker.local': watcher },
         });
-        const router = containerRouter.init();
-        const routeHandler = router.post.mock.calls.find(
-            ([route]) => route === '/:id/watch',
-        )[1];
-        const mockRes = {
-            status: jest.fn().mockReturnThis(),
-            json: jest.fn(),
-        };
-
-        await routeHandler({ params: { id: 'stale-id' } }, mockRes);
+        const mockRes = await watchContainer('stale-id');
 
         expect(watcher.watchContainer).toHaveBeenCalledWith(
             currentContainer,

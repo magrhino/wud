@@ -611,10 +611,10 @@ export class Docker extends Watcher {
                 return e;
             }),
         );
-        const containersWithImage = await Promise.all(containerPromises);
-
         // Return containers to process
-        const containersToReturn = containersWithImage.filter(
+        const containersToReturn = (
+            await Promise.all(containerPromises)
+        ).filter(
             (imagePromise) =>
                 imagePromise !== undefined && !(imagePromise instanceof Error),
         );
@@ -882,40 +882,32 @@ export class Docker extends Watcher {
             changed: false,
         };
 
-        // Find container in db & compare
-        const containerInDb = storeContainer.getContainer(
-            containerWithResult.id,
-        );
+        const containerToCompare =
+            storeContainer.getContainer(containerWithResult.id) ??
+            (previousContainerId
+                ? storeContainer.getContainer(previousContainerId)
+                : undefined);
 
-        // Recreated container? => Replace the stale id as a single update
-        if (previousContainerId) {
-            logContainer.debug('Container id changed');
-            const containerToCompare =
-                containerInDb ??
-                storeContainer.getContainer(previousContainerId);
-            containerReport.container = storeContainer.updateContainer(
-                containerWithResult,
-                previousContainerId,
-            );
-            containerReport.changed =
-                !containerToCompare ||
-                (containerToCompare.resultChanged(containerReport.container) &&
-                    containerWithResult.updateAvailable);
-
-            // Not found in DB? => Save it
-        } else if (!containerInDb) {
+        // Not found in DB? => Save it
+        if (!containerToCompare && !previousContainerId) {
             logContainer.debug('Container watched for the first time');
             containerReport.container =
                 storeContainer.insertContainer(containerWithResult);
             containerReport.changed = true;
-
-            // Found in DB? => update it
         } else {
-            containerReport.container =
-                storeContainer.updateContainer(containerWithResult);
+            if (previousContainerId) {
+                logContainer.debug('Container id changed');
+            }
+            containerReport.container = previousContainerId
+                ? storeContainer.updateContainer(
+                      containerWithResult,
+                      previousContainerId,
+                  )
+                : storeContainer.updateContainer(containerWithResult);
             containerReport.changed =
-                containerInDb.resultChanged(containerReport.container) &&
-                containerWithResult.updateAvailable;
+                !containerToCompare ||
+                (containerToCompare.resultChanged(containerReport.container) &&
+                    containerWithResult.updateAvailable);
         }
         return containerReport;
     }
